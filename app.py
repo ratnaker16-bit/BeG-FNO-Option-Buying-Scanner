@@ -1,934 +1,286 @@
 import streamlit as st
-import yfinance as yf
 import pandas as pd
-import numpy as np
-from datetime import datetime, time
-from zoneinfo import ZoneInfo
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import yfinance as yf
+from datetime import datetime
+import pytz
 
-# ============================================================
-# PAGE
-# ============================================================
+st.set_page_config(page_title="F&O VWAP + RSI Screener", layout="wide")
 
-st.set_page_config(
-    page_title="BeG@ F&O Option Buying Scanner",
-    page_icon="📊",
-    layout="wide"
-)
-
-st.title("BeG@ F&O Option Buying Scanner V1.0")
-st.caption("Full NSE F&O Stock Universe | CE / PE Setup Scanner")
-
-# ============================================================
-# FULL NSE F&O INDIVIDUAL STOCK UNIVERSE
-# NSE official list
-# ============================================================
-
+# ------------------------------------------------------------------
+# F&O STOCKS LIST (NSE) - ज़रूरत हो तो यहाँ add/remove करें
+# ------------------------------------------------------------------
 FNO_STOCKS = [
-    "AARTIIND",
-    "ABB",
-    "ABBOTINDIA",
-    "ACC",
-    "ADANIENT",
-    "ADANIPORTS",
-    "ABCAPITAL",
-    "ABFRL",
-    "ALKEM",
-    "AMBUJACEM",
-    "APOLLOHOSP",
-    "APOLLOTYRE",
-    "ASHOKLEY",
-    "ASIANPAINT",
-    "ASTRAL",
-    "ATUL",
-    "AUBANK",
-    "AUROPHARMA",
-    "AXISBANK",
-    "BAJAJ-AUTO",
-    "BAJFINANCE",
-    "BAJAJFINSV",
-    "BALKRISIND",
-    "BALRAMCHIN",
-    "BANDHANBNK",
-    "BANKBARODA",
-    "BATAINDIA",
-    "BERGEPAINT",
-    "BEL",
-    "BHARATFORG",
-    "BHEL",
-    "BPCL",
-    "BHARTIARTL",
-    "BIOCON",
-    "BSOFT",
-    "BOSCHLTD",
-    "BRITANNIA",
-    "CANFINHOME",
-    "CANBK",
-    "CHAMBLFERT",
-    "CHOLAFIN",
-    "CIPLA",
-    "CUB",
-    "COALINDIA",
-    "COFORGE",
-    "COLPAL",
-    "CONCOR",
-    "COROMANDEL",
-    "CROMPTON",
-    "CUMMINSIND",
-    "DABUR",
-    "DALBHARAT",
-    "DEEPAKNTR",
-    "DELTACORP",
-    "DIVISLAB",
-    "DIXON",
-    "DLF",
-    "LALPATHLAB",
-    "DRREDDY",
-    "EICHERMOT",
-    "ESCORTS",
-    "EXIDEIND",
-    "GAIL",
-    "GLENMARK",
-    "GMRINFRA",
-    "GODREJCP",
-    "GODREJPROP",
-    "GRANULES",
-    "GRASIM",
-    "GUJGASLTD",
-    "GNFC",
-    "HAVELLS",
-    "HCLTECH",
-    "HDFCAMC",
-    "HDFCBANK",
-    "HDFCLIFE",
-    "HEROMOTOCO",
-    "HINDALCO",
-    "HAL",
-    "HINDCOPPER",
-    "HINDPETRO",
-    "HINDUNILVR",
-    "HDFC",
-    "ICICIBANK",
-    "ICICIGI",
-    "ICICIPRULI",
-    "IDFCFIRSTB",
-    "IDFC",
-    "IBULHSGFIN",
-    "INDIAMART",
-    "IEX",
-    "IOC",
-    "IRCTC",
-    "IGL",
-    "INDUSTOWER",
-    "INDUSINDBK",
-    "NAUKRI",
-    "INFY",
-    "INTELLECT",
-    "INDIGO",
-    "IPCALAB",
-    "ITC",
-    "JINDALSTEL",
-    "JKCEMENT",
-    "JSWSTEEL",
-    "JUBLFOOD",
-    "KOTAKBANK",
-    "L&TFH",
-    "LTTS",
-    "LTIM",
-    "LT",
-    "LAURUSLABS",
-    "LICHSGFIN",
-    "LUPIN",
-    "MGL",
-    "M&MFIN",
-    "M&M",
-    "MANAPPURAM",
-    "MARICO",
-    "MARUTI",
-    "MFSL",
-    "METROPOLIS",
-    "MOTHERSON",
-    "MPHASIS",
-    "MRF",
-    "MCX",
-    "MUTHOOTFIN",
-    "NATIONALUM",
-    "NAVINFLUOR",
-    "NESTLEIND",
-    "NMDC",
-    "NTPC",
-    "OBEROIRLTY",
-    "ONGC",
-    "OFSS",
-    "PAGEIND",
-    "PERSISTENT",
-    "PETRONET",
-    "PIIND",
-    "PIDILITIND",
-    "PEL",
-    "POLYCAB",
-    "PFC",
-    "POWERGRID",
-    "PNB",
-    "PVRINOX",
-    "RAIN",
-    "RBLBANK",
-    "RECLTD",
-    "RELIANCE",
-    "SBICARD",
-    "SBILIFE",
-    "SHREECEM",
-    "SHRIRAMFIN",
-    "SIEMENS",
-    "SRF",
-    "SBIN",
-    "SAIL",
-    "SUNPHARMA",
-    "SUNTV",
-    "SYNGENE",
-    "TATACHEM",
-    "TATACOMM",
-    "TCS",
-    "TATACONSUM",
-    "TATAMOTORS",
-    "TATAPOWER",
-    "TATASTEEL",
-    "TECHM",
-    "FEDERALBNK",
-    "INDIACEM",
-    "INDHOTEL",
-    "RAMCOCEM",
-    "TITAN",
-    "TORNTPHARM",
-    "TRENT",
-    "TVSMOTOR",
-    "ULTRACEMCO",
-    "UBL",
-    "MCDOWELL-N",
-    "UPL",
-    "VEDL",
-    "IDEA",
-    "VOLTAS",
-    "WHIRLPOOL",
-    "WIPRO",
-    "ZEEL",
-    "ZYDUSLIFE"
+    "AARTIIND", "ABB", "ABBOTINDIA", "ABCAPITAL", "ABFRL", "ACC", "ADANIENT", "ADANIPORTS",
+    "ALKEM", "AMBUJACEM", "ANGELONE", "APOLLOHOSP", "APOLLOTYRE", "ASHOKLEY", "ASIANPAINT",
+    "ASTRAL", "ATGL", "AUBANK", "AUROPHARMA", "AXISBANK", "BAJAJ-AUTO", "BAJAJFINSV",
+    "BAJFINANCE", "BALKRISIND", "BANDHANBNK", "BANKBARODA", "BANKINDIA", "BDL", "BEL",
+    "BHARATFORG", "BHARTIARTL", "BHEL", "BIOCON", "BOSCHLTD", "BPCL", "BRITANNIA", "BSE",
+    "BSOFT", "CAMS", "CANBK", "CDSL", "CESC", "CGPOWER", "CHAMBLFERT", "CHOLAFIN", "CIPLA",
+    "COALINDIA", "COFORGE", "COLPAL", "CONCOR", "CROMPTON", "CUMMINSIND", "CYIENT", "DABUR",
+    "DALBHARAT", "DEEPAKNTR", "DELHIVERY", "DIVISLAB", "DIXON", "DLF", "DMART", "DRREDDY",
+    "EICHERMOT", "ESCORTS", "EXIDEIND", "FEDERALBNK", "GAIL", "GLENMARK", "GMRAIRPORT",
+    "GODREJCP", "GODREJPROP", "GRANULES", "GRASIM", "HAL", "HAVELLS", "HCLTECH", "HDFCAMC",
+    "HDFCBANK", "HDFCLIFE", "HEROMOTOCO", "HFCL", "HINDALCO", "HINDCOPPER", "HINDPETRO",
+    "HINDUNILVR", "HUDCO", "ICICIBANK", "ICICIGI", "ICICIPRULI", "IDEA", "IDFCFIRSTB", "IEX",
+    "IGL", "IIFL", "INDHOTEL", "INDIANB", "INDIGO", "INDUSINDBK", "INDUSTOWER", "INFY",
+    "INOXWIND", "IOC", "IRB", "IRCTC", "IREDA", "IRFC", "ITC", "JINDALSTEL", "JIOFIN",
+    "JSWENERGY", "JSWSTEEL", "JUBLFOOD", "KALYANKJIL", "KAYNES", "KEI", "KFINTECH",
+    "KOTAKBANK", "KPITTECH", "LAURUSLABS", "LICHSGFIN", "LICI", "LODHA", "LT", "LTF",
+    "LTIM", "LUPIN", "M&M", "M&MFIN", "MANAPPURAM", "MANKIND", "MARICO", "MARUTI",
+    "MAXHEALTH", "MAZDOCK", "MCX", "MFSL", "MGL", "MOTHERSON", "MPHASIS", "MUTHOOTFIN",
+    "NATIONALUM", "NAUKRI", "NBCC", "NCC", "NESTLEIND", "NHPC", "NMDC", "NTPC", "NYKAA",
+    "OBEROIRLTY", "OFSS", "OIL", "ONGC", "PAGEIND", "PATANJALI", "PAYTM", "PERSISTENT",
+    "PETRONET", "PFC", "PGEL", "PHOENIXLTD", "PIDILITIND", "PIIND", "PNB", "PNBHOUSING",
+    "POLICYBZR", "POLYCAB", "POONAWALLA", "POWERGRID", "PPLPHARMA", "PRESTIGE", "RBLBANK",
+    "RECLTD", "RELIANCE", "RVNL", "SAIL", "SBICARD", "SBILIFE", "SBIN", "SHREECEM",
+    "SHRIRAMFIN", "SIEMENS", "SOLARINDS", "SONACOMS", "SRF", "SUNPHARMA", "SUPREMEIND",
+    "SUZLON", "SYNGENE", "TATACHEM", "TATACONSUM", "TATAELXSI", "TATAMOTORS", "TATAPOWER",
+    "TATASTEEL", "TATATECH", "TCS", "TECHM", "TIINDIA", "TITAGARH", "TITAN", "TORNTPHARM",
+    "TORNTPOWER", "TRENT", "TVSMOTOR", "ULTRACEMCO", "UNIONBANK", "UNITDSPR", "UNOMINDA",
+    "UPL", "VBL", "VEDL", "VOLTAS", "WIPRO", "YESBANK", "ZYDUSLIFE",
 ]
 
-# ============================================================
-# SETTINGS
-# ============================================================
-
-st.sidebar.header("Scanner Settings")
-
-scan_tf = st.sidebar.selectbox(
-    "Scan Timeframe",
-    ["5m", "15m"],
-    index=0
-)
-
-rsi_len = st.sidebar.number_input(
-    "RSI Length",
-    min_value=2,
-    max_value=50,
-    value=9
-)
-
-di_len = st.sidebar.number_input(
-    "DI Length",
-    min_value=2,
-    max_value=50,
-    value=14
-)
-
-adx_smoothing = st.sidebar.number_input(
-    "ADX Smoothing",
-    min_value=2,
-    max_value=50,
-    value=14
-)
-
-min_adx = st.sidebar.number_input(
-    "Minimum ADX",
-    min_value=1.0,
-    max_value=100.0,
-    value=18.0,
-    step=0.5
-)
-
-volume_multiplier = st.sidebar.number_input(
-    "Volume Multiplier",
-    min_value=0.1,
-    max_value=10.0,
-    value=1.30,
-    step=0.05
-)
-
-ce_rsi = st.sidebar.number_input(
-    "BUY CE RSI ≥",
-    min_value=1.0,
-    max_value=100.0,
-    value=55.0,
-    step=0.5
-)
-
-pe_rsi = st.sidebar.number_input(
-    "BUY PE RSI ≤",
-    min_value=1.0,
-    max_value=100.0,
-    value=45.0,
-    step=0.5
-)
-
-use_breakout = st.sidebar.checkbox(
-    "Previous Candle Breakout",
-    value=True
-)
-
-# ============================================================
-# SESSION
-# ============================================================
-
-IST = ZoneInfo("Asia/Kolkata")
-
-SESSION_START = time(9, 20)
-SESSION_END = time(14, 45)
-
-now_ist = datetime.now(IST)
-current_time = now_ist.time()
-
-market_open = (
-    current_time >= SESSION_START
-    and current_time <= SESSION_END
-)
-
-# ============================================================
-# INDICATOR FUNCTIONS
-# ============================================================
-
-def rma(series, length):
-    return series.ewm(
-        alpha=1 / length,
-        adjust=False,
-        min_periods=length
-    ).mean()
+IST = pytz.timezone("Asia/Kolkata")
 
 
-def calculate_rsi(close, length=9):
-
+# ------------------------------------------------------------------
+# Indicators
+# ------------------------------------------------------------------
+def rsi(close: pd.Series, period: int = 14) -> pd.Series:
     delta = close.diff()
-
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
-
-    avg_gain = rma(gain, length)
-    avg_loss = rma(loss, length)
-
-    rs = avg_gain / avg_loss.replace(0, np.nan)
-
+    avg_gain = gain.ewm(alpha=1 / period, adjust=False, min_periods=period).mean()
+    avg_loss = loss.ewm(alpha=1 / period, adjust=False, min_periods=period).mean()
+    rs = avg_gain / avg_loss.replace(0, 1e-12)
     return 100 - (100 / (1 + rs))
 
 
-def calculate_dmi_adx(df, di_len=14, adx_len=14):
+def vwap(df: pd.DataFrame) -> pd.Series:
+    """रोज़ का VWAP, हर दिन 9:15 से reset"""
+    typical = (df["High"] + df["Low"] + df["Close"]) / 3
+    vol = df["Volume"].fillna(0)
+    idx = df.index.tz_convert(IST) if df.index.tz is not None else df.index
+    day = pd.Series(idx.date, index=df.index)
+    pv = (typical * vol).groupby(day).cumsum()
+    cv = vol.groupby(day).cumsum()
+    return pv / cv.replace(0, float("nan"))
 
-    high = df["High"]
-    low = df["Low"]
-    close = df["Close"]
 
-    up_move = high.diff()
-    down_move = -low.diff()
-
-    plus_dm = np.where(
-        (up_move > down_move) & (up_move > 0),
-        up_move,
-        0
+# ------------------------------------------------------------------
+# Data helpers
+# ------------------------------------------------------------------
+@st.cache_data(ttl=60, show_spinner=False)
+def download(symbols: tuple, interval: str):
+    tickers = [s + ".NS" for s in symbols]
+    return yf.download(
+        tickers,
+        period="5d",
+        interval=interval,
+        group_by="ticker",
+        auto_adjust=False,
+        progress=False,
+        threads=True,
     )
 
-    minus_dm = np.where(
-        (down_move > up_move) & (down_move > 0),
-        down_move,
-        0
-    )
 
-    tr1 = high - low
-    tr2 = (high - close.shift()).abs()
-    tr3 = (low - close.shift()).abs()
-
-    tr = pd.concat(
-        [tr1, tr2, tr3],
-        axis=1
-    ).max(axis=1)
-
-    atr = rma(tr, di_len)
-
-    plus_di = (
-        100 *
-        rma(pd.Series(plus_dm, index=df.index), di_len)
-        / atr
-    )
-
-    minus_di = (
-        100 *
-        rma(pd.Series(minus_dm, index=df.index), di_len)
-        / atr
-    )
-
-    di_sum = plus_di + minus_di
-
-    dx = (
-        100 *
-        (plus_di - minus_di).abs()
-        / di_sum.replace(0, np.nan)
-    )
-
-    adx = rma(dx, adx_len)
-
-    return plus_di, minus_di, adx
-
-
-def calculate_vwap(df):
-
-    typical_price = (
-        df["High"] +
-        df["Low"] +
-        df["Close"]
-    ) / 3
-
-    volume = df["Volume"]
-
-    temp = pd.DataFrame({
-        "TPV": typical_price * volume,
-        "VOL": volume
-    }, index=df.index)
-
-    # Session-wise daily VWAP
-    local_date = pd.Series(
-        df.index.date,
-        index=df.index
-    )
-
-    cumulative_tpv = temp["TPV"].groupby(local_date).cumsum()
-    cumulative_vol = temp["VOL"].groupby(local_date).cumsum()
-
-    vwap = cumulative_tpv / cumulative_vol.replace(0, np.nan)
-
-    return vwap
-
-
-# ============================================================
-# PREPARE DATA
-# ============================================================
-
-def prepare_data(df):
-
-    if df is None or df.empty:
-        return None
-
-    df = df.copy()
-
-    # Flatten Yahoo multi-index
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-
-    required = [
-        "Open",
-        "High",
-        "Low",
-        "Close",
-        "Volume"
-    ]
-
-    for col in required:
-        if col not in df.columns:
+def get_ohlcv(data, symbol, min_len=20):
+    t = symbol + ".NS"
+    try:
+        if t not in data.columns.get_level_values(0):
             return None
+        df = data[t][["Open", "High", "Low", "Close", "Volume"]].dropna(subset=["Close"])
+    except Exception:
+        return None
+    return df if len(df) >= min_len else None
 
-    df = df[required].copy()
 
-    df.dropna(subset=["Close"], inplace=True)
-
-    # EMA
-    df["EMA5"] = df["Close"].ewm(
-        span=5,
-        adjust=False
-    ).mean()
-
-    df["EMA9"] = df["Close"].ewm(
-        span=9,
-        adjust=False
-    ).mean()
-
-    df["EMA15"] = df["Close"].ewm(
-        span=15,
-        adjust=False
-    ).mean()
-
-    # RSI
-    df["RSI"] = calculate_rsi(
-        df["Close"],
-        rsi_len
-    )
-
-    # DMI / ADX
-    (
-        df["PLUS_DI"],
-        df["MINUS_DI"],
-        df["ADX"]
-    ) = calculate_dmi_adx(
-        df,
-        di_len,
-        adx_smoothing
-    )
-
-    # VWAP
-    df["VWAP"] = calculate_vwap(df)
-
-    # Volume SMA
-    df["VOL_SMA20"] = df["Volume"].rolling(20).mean()
-
-    df["VOL_RATIO"] = (
-        df["Volume"] /
-        df["VOL_SMA20"].replace(0, np.nan)
-    )
-
-    # ADX rising
-    df["ADX_RISING"] = df["ADX"] > df["ADX"].shift(1)
-
+def drop_incomplete(df, minutes):
+    """अगर आख़िरी candle अभी चल रही है तो उसे हटाओ (बंद candle ही गिनो)"""
+    if df is None or df.empty:
+        return df
+    last = df.index[-1]
+    last = last.tz_convert("UTC") if last.tzinfo else last.tz_localize("UTC")
+    if last + pd.Timedelta(minutes=minutes) > pd.Timestamp.now(tz="UTC"):
+        return df.iloc[:-1]
     return df
 
 
-# ============================================================
-# SIGNAL LOGIC
-# ============================================================
-
-def scan_stock(symbol, raw_df):
-
-    df = prepare_data(raw_df)
-
-    if df is None or len(df) < 50:
-        return None
-
-    last = df.iloc[-1]
-    prev = df.iloc[-2]
-
-    # Latest candle time
-    timestamp = df.index[-1]
-
-    if timestamp.tzinfo is None:
-        timestamp = timestamp.replace(
-            tzinfo=ZoneInfo("Asia/Kolkata")
-        )
-
-    timestamp_ist = timestamp.astimezone(IST)
-
-    candle_time = timestamp_ist.time()
-
-    # Session filter
-    in_session = (
-        candle_time >= SESSION_START
-        and candle_time <= SESSION_END
-    )
-
-    if not in_session:
-        return None
-
-    # ========================================================
-    # BUY CE
-    # ========================================================
-
-    bullish_trend = (
-        last["EMA5"] >
-        last["EMA9"] >
-        last["EMA15"]
-        and
-        last["Close"] >
-        last["VWAP"]
-    )
-
-    bullish_di = (
-        last["PLUS_DI"] >
-        last["MINUS_DI"]
-    )
-
-    bullish_breakout = (
-        last["Close"] >
-        prev["High"]
-    )
-
-    ce_breakout_ok = (
-        bullish_breakout
-        if use_breakout
-        else True
-    )
-
-    buy_ce = (
-        bullish_trend
-        and last["RSI"] >= ce_rsi
-        and bullish_di
-        and last["ADX"] >= min_adx
-        and last["ADX_RISING"]
-        and last["VOL_RATIO"] >= volume_multiplier
-        and ce_breakout_ok
-    )
-
-    # ========================================================
-    # BUY PE
-    # ========================================================
-
-    bearish_trend = (
-        last["EMA5"] <
-        last["EMA9"] <
-        last["EMA15"]
-        and
-        last["Close"] <
-        last["VWAP"]
-    )
-
-    bearish_di = (
-        last["MINUS_DI"] >
-        last["PLUS_DI"]
-    )
-
-    bearish_breakout = (
-        last["Close"] <
-        prev["Low"]
-    )
-
-    pe_breakout_ok = (
-        bearish_breakout
-        if use_breakout
-        else True
-    )
-
-    buy_pe = (
-        bearish_trend
-        and last["RSI"] <= pe_rsi
-        and bearish_di
-        and last["ADX"] >= min_adx
-        and last["ADX_RISING"]
-        and last["VOL_RATIO"] >= volume_multiplier
-        and pe_breakout_ok
-    )
-
-    # ========================================================
-    # RESULT
-    # ========================================================
-
-    if buy_ce:
-
-        return {
-            "STOCK": symbol,
-            "OPTION": "BUY CE",
-            "ENTRY": float(last["Close"]),
-            "RSI": float(last["RSI"]),
-            "ADX": float(last["ADX"]),
-            "PLUS DI": float(last["PLUS_DI"]),
-            "MINUS DI": float(last["MINUS_DI"]),
-            "VOL RATIO": float(last["VOL_RATIO"]),
-            "VWAP": float(last["VWAP"]),
-            "TIME": timestamp_ist.strftime("%H:%M")
-        }
-
-    if buy_pe:
-
-        return {
-            "STOCK": symbol,
-            "OPTION": "BUY PE",
-            "ENTRY": float(last["Close"]),
-            "RSI": float(last["RSI"]),
-            "ADX": float(last["ADX"]),
-            "PLUS DI": float(last["PLUS_DI"]),
-            "MINUS DI": float(last["MINUS_DI"]),
-            "VOL RATIO": float(last["VOL_RATIO"]),
-            "VWAP": float(last["VWAP"]),
-            "TIME": timestamp_ist.strftime("%H:%M")
-        }
-
-    return None
+def ist_day(ts):
+    return ts.tz_convert(IST).date() if ts.tzinfo else ts.date()
 
 
-# ============================================================
-# DOWNLOAD DATA
-# ============================================================
-
-@st.cache_data(
-    ttl=30,
-    show_spinner=False
-)
-def download_all_data(symbols, interval):
-
-    tickers = [
-        symbol + ".NS"
-        for symbol in symbols
-    ]
-
+def fmt_time(ts):
     try:
-
-        data = yf.download(
-            tickers=tickers,
-            period="5d",
-            interval=interval,
-            group_by="ticker",
-            auto_adjust=False,
-            threads=True,
-            progress=False
-        )
-
-        return data
-
+        return ts.tz_convert(IST).strftime("%H:%M")
     except Exception:
+        return str(ts)
+
+
+# ------------------------------------------------------------------
+# STEP 1: BASE LIST (VWAP + 15-minute candle)
+#   CE: Price > VWAP  और  आख़िरी बंद 15m candle ने, उसी दिन की
+#       किसी भी पिछली 15m candle के HIGH को अभी-अभी ऊपर cross करके close किया
+#   PE: Price < VWAP  और  आख़िरी बंद 15m candle ने, उसी दिन की
+#       किसी भी पिछली 15m candle के LOW को अभी-अभी नीचे cross करके close किया
+#
+#   "अभी-अभी" = पिछली 15m candle का close level के इस तरफ था,
+#                आख़िरी 15m candle का close level के उस पार है
+# ------------------------------------------------------------------
+def base_lists(symbols):
+    d15_all = download(tuple(symbols), "15m")
+    d2_all = download(tuple(symbols), "2m")
+    ce, pe = {}, {}
+
+    for sym in symbols:
+        d2 = get_ohlcv(d2_all, sym)
+        d15 = get_ohlcv(d15_all, sym, min_len=3)
+        if d2 is None or d15 is None:
+            continue
+
+        # अभी का price और VWAP (2m data से)
+        price = float(d2["Close"].iloc[-1])
+        v = vwap(d2).iloc[-1]
+        if pd.isna(v):
+            continue
+        v = float(v)
+
+        d15 = drop_incomplete(d15, 15)
+        if d15 is None or len(d15) < 2:
+            continue
+
+        c_ts = d15.index[-1]
+        day_df = d15[[ist_day(t) == ist_day(c_ts) for t in d15.index]]
+        if len(day_df) < 2:
+            continue
+
+        C = day_df.iloc[-1]            # आख़िरी बंद 15m candle
+        P = day_df.iloc[-2]            # उससे पिछली candle
+        earlier = day_df.iloc[:-1]     # आज की सभी पिछली 15m candles
+        c_close = float(C["Close"])
+        p_close = float(P["Close"])
+
+        info = {
+            "Price": round(price, 2),
+            "VWAP": round(v, 2),
+            "15m Close": round(c_close, 2),
+            "15m Time": fmt_time(day_df.index[-1]),
+        }
+
+        # ---- CE: किसी भी पिछली 15m High को ऊपर cross ----
+        if price > v:
+            highs = earlier["High"]
+            crossed = highs[(highs >= p_close) & (highs < c_close)]
+            if not crossed.empty:
+                ce[sym] = {**info, "Crossed 15m High": round(float(crossed.max()), 2)}
+
+        # ---- PE: किसी भी पिछली 15m Low को नीचे cross ----
+        if price < v:
+            lows = earlier["Low"]
+            crossed = lows[(lows <= p_close) & (lows > c_close)]
+            if not crossed.empty:
+                pe[sym] = {**info, "Crossed 15m Low": round(float(crossed.min()), 2)}
+
+    return ce, pe
+
+
+# ------------------------------------------------------------------
+# STEP 2: उसी list में से RSI cross
+#   CE: RSI 40/60 को नीचे से ऊपर cross
+#   PE: RSI 60/40 को ऊपर से नीचे cross
+# ------------------------------------------------------------------
+def rsi_scan(interval, minutes, candidates, side, lookback):
+    if not candidates:
         return pd.DataFrame()
+    data = download(tuple(candidates.keys()), interval)
+    rows = []
 
+    for sym, info in candidates.items():
+        df = get_ohlcv(data, sym)
+        if df is None:
+            continue
+        df = drop_incomplete(df, minutes)
+        if df is None or len(df) < 20:
+            continue
+        r = rsi(df["Close"]).dropna()
+        if len(r) < lookback + 1:
+            continue
 
-# ============================================================
-# SCANNER
-# ============================================================
-
-def run_scanner():
-
-    results = []
-    failed = []
-
-    data = download_all_data(
-        tuple(FNO_STOCKS),
-        scan_tf
-    )
-
-    if data is None or data.empty:
-        return results, len(FNO_STOCKS)
-
-    # Yahoo returns MultiIndex:
-    # ticker -> OHLCV
-
-    for symbol in FNO_STOCKS:
-
-        yahoo_symbol = symbol + ".NS"
-
-        try:
-
-            if isinstance(data.columns, pd.MultiIndex):
-
-                if yahoo_symbol not in data.columns.get_level_values(0):
-                    failed.append(symbol)
-                    continue
-
-                df = data[yahoo_symbol].copy()
-
+        for i in range(1, lookback + 1):
+            prev, cur = float(r.iloc[-i - 1]), float(r.iloc[-i])
+            levels = []
+            if side == "CE":
+                if prev < 40 <= cur:
+                    levels.append("40")
+                if prev < 60 <= cur:
+                    levels.append("60")
             else:
+                if prev > 60 >= cur:
+                    levels.append("60")
+                if prev > 40 >= cur:
+                    levels.append("40")
+            if levels:
+                rows.append({
+                    "Stock": sym,
+                    "RSI Level": " & ".join(levels),
+                    "Prev RSI": round(prev, 1),
+                    "Cross RSI": round(cur, 1),
+                    "RSI (now)": round(float(r.iloc[-1]), 1),
+                    "Cross candle": fmt_time(r.index[-i]),
+                    **info,
+                })
+                break
 
-                df = data.copy()
-
-            if df.empty:
-                failed.append(symbol)
-                continue
-
-            result = scan_stock(
-                symbol,
-                df
-            )
-
-            if result is not None:
-                results.append(result)
-
-        except Exception:
-            failed.append(symbol)
-
-    return results, len(failed)
-
-
-# ============================================================
-# MARKET STATUS
-# ============================================================
-
-if market_open:
-
-    st.success(
-        f"🟢 Market Scanner ACTIVE | "
-        f"IST {now_ist.strftime('%H:%M:%S')}"
-    )
-
-else:
-
-    st.warning(
-        f"🔴 Scanner session: 09:20–14:45 | "
-        f"Current IST {now_ist.strftime('%H:%M:%S')}"
-    )
+    out = pd.DataFrame(rows)
+    if not out.empty:
+        out = out.sort_values("Cross candle", ascending=False)
+    return out
 
 
-# ============================================================
-# SCAN BUTTON
-# ============================================================
+# ------------------------------------------------------------------
+# UI
+# ------------------------------------------------------------------
+st.title("📈 F&O VWAP + 15m + RSI(14) Screener")
+now = datetime.now(IST)
+st.caption(f"अभी: {now.strftime('%d-%b-%Y %H:%M:%S')} IST  |  Data: Yahoo Finance (कुछ delay संभव)")
 
-col1, col2, col3 = st.columns(3)
+with st.sidebar:
+    st.header("Settings")
+    lookback = st.slider("RSI cross पिछली कितनी candles में देखें", 1, 5, 2)
+    st.write(f"कुल F&O stocks: **{len(FNO_STOCKS)}**")
+    if st.button("🔄 Refresh / Scan Now"):
+        st.cache_data.clear()
+        st.rerun()
 
-with col1:
-    st.metric(
-        "F&O Universe",
-        len(FNO_STOCKS)
-    )
+with st.spinner("Base list (VWAP + 15m) बन रही है..."):
+    ce_base, pe_base = base_lists(FNO_STOCKS)
 
-with col2:
-    st.metric(
-        "Scan TF",
-        scan_tf
-    )
+st.write(f"✅ Base list: CE **{len(ce_base)}** stocks | PE **{len(pe_base)}** stocks")
 
-with col3:
-    st.metric(
-        "Trading Session",
-        "09:20–14:45"
-    )
+tab_ce, tab_pe = st.tabs(["🟢 CE Stocks", "🔴 PE Stocks"])
 
+with tab_ce:
+    st.caption("Price > VWAP + किसी 15m High के ऊपर अभी close → फिर RSI(14) 40/60 को नीचे से ऊपर cross")
+    with st.spinner("CE scan..."):
+        ce2 = rsi_scan("2m", 2, ce_base, "CE", lookback)
+        ce5 = rsi_scan("5m", 5, ce_base, "CE", lookback)
+    st.subheader(f"⏱ 2 Minute CE ({len(ce2)})")
+    st.dataframe(ce2, use_container_width=True, hide_index=True)
+    st.subheader(f"⏱ 5 Minute CE ({len(ce5)})")
+    st.dataframe(ce5, use_container_width=True, hide_index=True)
+    with st.expander(f"Base CE list ({len(ce_base)})"):
+        st.dataframe(pd.DataFrame(ce_base).T, use_container_width=True)
 
-if st.button(
-    "🔄 SCAN FULL F&O",
-    type="primary",
-    use_container_width=True
-):
+with tab_pe:
+    st.caption("Price < VWAP + किसी 15m Low के नीचे अभी close → फिर RSI(14) 60/40 को ऊपर से नीचे cross")
+    with st.spinner("PE scan..."):
+        pe2 = rsi_scan("2m", 2, pe_base, "PE", lookback)
+        pe5 = rsi_scan("5m", 5, pe_base, "PE", lookback)
+    st.subheader(f"⏱ 2 Minute PE ({len(pe2)})")
+    st.dataframe(pe2, use_container_width=True, hide_index=True)
+    st.subheader(f"⏱ 5 Minute PE ({len(pe5)})")
+    st.dataframe(pe5, use_container_width=True, hide_index=True)
+    with st.expander(f"Base PE list ({len(pe_base)})"):
+        st.dataframe(pd.DataFrame(pe_base).T, use_container_width=True)
 
-    with st.spinner(
-        f"Scanning {len(FNO_STOCKS)} F&O stocks..."
-    ):
-
-        results, failed_count = run_scanner()
-
-    # ========================================================
-    # RESULTS
-    # ========================================================
-
-    if results:
-
-        result_df = pd.DataFrame(results)
-
-        # CE first, PE second
-        result_df["SORT"] = result_df["OPTION"].map({
-            "BUY CE": 1,
-            "BUY PE": 2
-        })
-
-        result_df = (
-            result_df
-            .sort_values(
-                ["SORT", "ADX"],
-                ascending=[True, False]
-            )
-            .drop(columns=["SORT"])
-        )
-
-        st.success(
-            f"🎯 {len(result_df)} Active Setup Found"
-        )
-
-        # Main dashboard
-        st.subheader("📊 Active F&O Setups")
-
-        display_df = result_df[
-            [
-                "STOCK",
-                "OPTION",
-                "ENTRY",
-                "RSI",
-                "ADX",
-                "PLUS DI",
-                "MINUS DI",
-                "VOL RATIO",
-                "VWAP",
-                "TIME"
-            ]
-        ].copy()
-
-        display_df["ENTRY"] = display_df["ENTRY"].round(2)
-        display_df["RSI"] = display_df["RSI"].round(1)
-        display_df["ADX"] = display_df["ADX"].round(1)
-        display_df["PLUS DI"] = display_df["PLUS DI"].round(1)
-        display_df["MINUS DI"] = display_df["MINUS DI"].round(1)
-        display_df["VOL RATIO"] = display_df["VOL RATIO"].round(2)
-        display_df["VWAP"] = display_df["VWAP"].round(2)
-
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            hide_index=True
-        )
-
-        # ====================================================
-        # CE / PE SEPARATE
-        # ====================================================
-
-        st.subheader("🟢 BUY CE")
-
-        ce_df = display_df[
-            display_df["OPTION"] == "BUY CE"
-        ]
-
-        if not ce_df.empty:
-            st.dataframe(
-                ce_df,
-                use_container_width=True,
-                hide_index=True
-            )
-        else:
-            st.info("No BUY CE setup")
-
-        st.subheader("🔴 BUY PE")
-
-        pe_df = display_df[
-            display_df["OPTION"] == "BUY PE"
-        ]
-
-        if not pe_df.empty:
-            st.dataframe(
-                pe_df,
-                use_container_width=True,
-                hide_index=True
-            )
-        else:
-            st.info("No BUY PE setup")
-
-    else:
-
-        st.info(
-            "No active CE/PE setup found in the current scan."
-        )
-
-    st.caption(
-        f"Stocks scanned: {len(FNO_STOCKS)} | "
-        f"Data unavailable/skipped: {failed_count}"
-    )
-
-
-# ============================================================
-# LOGIC DISPLAY
-# ============================================================
-
-with st.expander("📌 Scanner Logic"):
-
-    st.markdown("""
-### BUY CE
-
-- EMA5 > EMA9 > EMA15
-- Close > VWAP
-- RSI ≥ 55
-- +DI > -DI
-- ADX ≥ 18
-- ADX rising
-- Volume ≥ 1.30 × Volume SMA20
-- Close > Previous Candle High
-- Time: 09:20–14:45
-
-### BUY PE
-
-- EMA5 < EMA9 < EMA15
-- Close < VWAP
-- RSI ≤ 45
-- -DI > +DI
-- ADX ≥ 18
-- ADX rising
-- Volume ≥ 1.30 × Volume SMA20
-- Close < Previous Candle Low
-- Time: 09:20–14:45
-""")
-
-st.caption(
-    "Data source: Yahoo Finance. Intraday data may be delayed and should "
-    "not be treated as exchange-grade real-time market data."
-)
+st.caption("⚠️ सिर्फ screening tool है, trading advice नहीं। Entry से पहले chart खुद confirm करें।")
