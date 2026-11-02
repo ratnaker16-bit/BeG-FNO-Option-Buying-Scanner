@@ -106,10 +106,6 @@ def drop_incomplete(df, minutes):
     return df
 
 
-def ist_day(ts):
-    return ts.tz_convert(IST).date() if ts.tzinfo else ts.date()
-
-
 def fmt_time(ts):
     try:
         return ts.tz_convert(IST).strftime("%H:%M")
@@ -118,14 +114,9 @@ def fmt_time(ts):
 
 
 # ------------------------------------------------------------------
-# STEP 1: BASE LIST (VWAP + 15-minute candle)
-#   CE: Price > VWAP  और  आख़िरी बंद 15m candle ने, उसी दिन की
-#       किसी भी पिछली 15m candle के HIGH को अभी-अभी ऊपर cross करके close किया
-#   PE: Price < VWAP  और  आख़िरी बंद 15m candle ने, उसी दिन की
-#       किसी भी पिछली 15m candle के LOW को अभी-अभी नीचे cross करके close किया
-#
-#   "अभी-अभी" = पिछली 15m candle का close level के इस तरफ था,
-#                आख़िरी 15m candle का close level के उस पार है
+# STEP 1: CE STOCKS / PE STOCKS (base lists)
+#   CE: अभी का price > पिछली (बंद) 15m candle का close  AND  price > VWAP
+#   PE: अभी का price < पिछली (बंद) 15m candle का close  AND  price < VWAP
 # ------------------------------------------------------------------
 def base_lists(symbols):
     d15_all = download(tuple(symbols), "15m")
@@ -146,48 +137,33 @@ def base_lists(symbols):
         v = float(v)
 
         d15 = drop_incomplete(d15, 15)
-        if d15 is None or len(d15) < 2:
+        if d15 is None or d15.empty:
             continue
 
-        c_ts = d15.index[-1]
-        day_df = d15[[ist_day(t) == ist_day(c_ts) for t in d15.index]]
-        if len(day_df) < 2:
-            continue
-
-        C = day_df.iloc[-1]            # आख़िरी बंद 15m candle
-        P = day_df.iloc[-2]            # उससे पिछली candle
-        earlier = day_df.iloc[:-1]     # आज की सभी पिछली 15m candles
-        c_close = float(C["Close"])
-        p_close = float(P["Close"])
+        prev15_close = float(d15["Close"].iloc[-1])   # पिछली बंद 15m candle का close
+        prev15_time = fmt_time(d15.index[-1])
 
         info = {
             "Price": round(price, 2),
             "VWAP": round(v, 2),
-            "15m Close": round(c_close, 2),
-            "15m Time": fmt_time(day_df.index[-1]),
+            "Prev 15m Close": round(prev15_close, 2),
+            "Prev 15m Time": fmt_time(d15.index[-1]),
+            "Price vs VWAP %": round((price - v) / v * 100, 2),
         }
 
-        # ---- CE: किसी भी पिछली 15m High को ऊपर cross ----
-        if price > v:
-            highs = earlier["High"]
-            crossed = highs[(highs >= p_close) & (highs < c_close)]
-            if not crossed.empty:
-                ce[sym] = {**info, "Crossed 15m High": round(float(crossed.max()), 2)}
-
-        # ---- PE: किसी भी पिछली 15m Low को नीचे cross ----
-        if price < v:
-            lows = earlier["Low"]
-            crossed = lows[(lows <= p_close) & (lows > c_close)]
-            if not crossed.empty:
-                pe[sym] = {**info, "Crossed 15m Low": round(float(crossed.min()), 2)}
+        if price > prev15_close and price > v:
+            ce[sym] = info
+        elif price < prev15_close and price < v:
+            pe[sym] = info
 
     return ce, pe
 
 
 # ------------------------------------------------------------------
-# STEP 2: उसी list में से RSI cross
-#   CE: RSI 40/60 को नीचे से ऊपर cross
-#   PE: RSI 60/40 को ऊपर से नीचे cross
+# STEP 2: Base list में से RSI(14) cross
+#   CE: RSI ने 40 या 60 को नीचे से ऊपर cross किया
+#   PE: RSI ने 60 या 40 को ऊपर से नीचे cross किया
+#   lookback = 1  ->  सिर्फ पिछली (बंद) candle
 # ------------------------------------------------------------------
 def rsi_scan(interval, minutes, candidates, side, lookback):
     if not candidates:
@@ -225,7 +201,6 @@ def rsi_scan(interval, minutes, candidates, side, lookback):
                     "RSI Level": " & ".join(levels),
                     "Prev RSI": round(prev, 1),
                     "Cross RSI": round(cur, 1),
-                    "RSI (now)": round(float(r.iloc[-1]), 1),
                     "Cross candle": fmt_time(r.index[-i]),
                     **info,
                 })
@@ -237,6 +212,14 @@ def rsi_scan(interval, minutes, candidates, side, lookback):
     return out
 
 
+def base_table(d):
+    df = pd.DataFrame(d).T
+    if df.empty:
+        return df
+    df.insert(0, "Stock", df.index)
+    return df.reset_index(drop=True)
+
+
 # ------------------------------------------------------------------
 # UI
 # ------------------------------------------------------------------
@@ -246,41 +229,53 @@ st.caption(f"अभी: {now.strftime('%d-%b-%Y %H:%M:%S')} IST  |  Data: Yahoo 
 
 with st.sidebar:
     st.header("Settings")
-    lookback = st.slider("RSI cross पिछली कितनी candles में देखें", 1, 5, 2)
+    lookback = st.slider(
+        "RSI cross कितनी पिछली candles में देखें",
+        1, 3, 1,
+        help="1 = सिर्फ पिछली बंद candle (आपकी शर्त)। बढ़ाने पर थोड़ी पुरानी cross भी दिखेंगी।",
+    )
     st.write(f"कुल F&O stocks: **{len(FNO_STOCKS)}**")
     if st.button("🔄 Refresh / Scan Now"):
         st.cache_data.clear()
         st.rerun()
 
-with st.spinner("Base list (VWAP + 15m) बन रही है..."):
+with st.spinner("CE / PE Stocks list बन रही है..."):
     ce_base, pe_base = base_lists(FNO_STOCKS)
 
-st.write(f"✅ Base list: CE **{len(ce_base)}** stocks | PE **{len(pe_base)}** stocks")
-
-tab_ce, tab_pe = st.tabs(["🟢 CE Stocks", "🔴 PE Stocks"])
+tab_ce, tab_pe = st.tabs([f"🟢 CE ({len(ce_base)})", f"🔴 PE ({len(pe_base)})"])
 
 with tab_ce:
-    st.caption("Price > VWAP + किसी 15m High के ऊपर अभी close → फिर RSI(14) 40/60 को नीचे से ऊपर cross")
-    with st.spinner("CE scan..."):
+    st.subheader(f"🟢 CE Stocks ({len(ce_base)})")
+    st.caption("Price > पिछली 15m candle का close  और  Price > VWAP")
+    st.dataframe(base_table(ce_base), use_container_width=True, hide_index=True)
+
+    with st.spinner("CE RSI scan..."):
         ce2 = rsi_scan("2m", 2, ce_base, "CE", lookback)
         ce5 = rsi_scan("5m", 5, ce_base, "CE", lookback)
+
     st.subheader(f"⏱ 2 Minute CE ({len(ce2)})")
+    st.caption("CE Stocks में से — 2m RSI(14) ने 40 या 60 को ऊपर की ओर cross किया")
     st.dataframe(ce2, use_container_width=True, hide_index=True)
+
     st.subheader(f"⏱ 5 Minute CE ({len(ce5)})")
+    st.caption("CE Stocks में से — 5m RSI(14) ने 40 या 60 को ऊपर की ओर cross किया")
     st.dataframe(ce5, use_container_width=True, hide_index=True)
-    with st.expander(f"Base CE list ({len(ce_base)})"):
-        st.dataframe(pd.DataFrame(ce_base).T, use_container_width=True)
 
 with tab_pe:
-    st.caption("Price < VWAP + किसी 15m Low के नीचे अभी close → फिर RSI(14) 60/40 को ऊपर से नीचे cross")
-    with st.spinner("PE scan..."):
+    st.subheader(f"🔴 PE Stocks ({len(pe_base)})")
+    st.caption("Price < पिछली 15m candle का close  और  Price < VWAP")
+    st.dataframe(base_table(pe_base), use_container_width=True, hide_index=True)
+
+    with st.spinner("PE RSI scan..."):
         pe2 = rsi_scan("2m", 2, pe_base, "PE", lookback)
         pe5 = rsi_scan("5m", 5, pe_base, "PE", lookback)
+
     st.subheader(f"⏱ 2 Minute PE ({len(pe2)})")
+    st.caption("PE Stocks में से — 2m RSI(14) ने 60 या 40 को नीचे की ओर cross किया")
     st.dataframe(pe2, use_container_width=True, hide_index=True)
+
     st.subheader(f"⏱ 5 Minute PE ({len(pe5)})")
+    st.caption("PE Stocks में से — 5m RSI(14) ने 60 या 40 को नीचे की ओर cross किया")
     st.dataframe(pe5, use_container_width=True, hide_index=True)
-    with st.expander(f"Base PE list ({len(pe_base)})"):
-        st.dataframe(pd.DataFrame(pe_base).T, use_container_width=True)
 
 st.caption("⚠️ सिर्फ screening tool है, trading advice नहीं। Entry से पहले chart खुद confirm करें।")
