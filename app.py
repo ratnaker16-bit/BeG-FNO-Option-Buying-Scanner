@@ -95,15 +95,15 @@ def get_ohlcv(data, symbol, min_len=20):
     return df if len(df) >= min_len else None
 
 
-def drop_incomplete(df, minutes):
-    """अगर आख़िरी candle अभी चल रही है तो उसे हटाओ (बंद candle ही गिनो)"""
-    if df is None or df.empty:
-        return df
-    last = df.index[-1]
-    last = last.tz_convert("UTC") if last.tzinfo else last.tz_localize("UTC")
-    if last + pd.Timedelta(minutes=minutes) > pd.Timestamp.now(tz="UTC"):
-        return df.iloc[:-1]
-    return df
+def prev_closed(df, ref_ts, minutes):
+    """
+    ref_ts = सबसे ताज़ा (अभी वाली) candle का समय।
+    ref_ts जिस `minutes` वाली candle में आता है, वह "अभी वाली" candle है।
+    उससे पहले की सारी candles "बंद" मानी जाती हैं -> आख़िरी = "पिछली candle"।
+    (बाज़ार खुला हो या बंद, chart जैसा ही नतीजा)
+    """
+    cut = ref_ts.floor(f"{minutes}min")
+    return df[df.index < cut]
 
 
 def fmt_time(ts):
@@ -115,13 +115,13 @@ def fmt_time(ts):
 
 # ------------------------------------------------------------------
 # STEP 1: CE STOCKS / PE STOCKS (base lists)
-#   CE: अभी का price > पिछली (बंद) 15m candle का close  AND  price > VWAP
-#   PE: अभी का price < पिछली (बंद) 15m candle का close  AND  price < VWAP
+#   CE: अभी का price > पिछली 15m candle का close  AND  price > VWAP
+#   PE: अभी का price < पिछली 15m candle का close  AND  price < VWAP
 # ------------------------------------------------------------------
 def base_lists(symbols):
     d15_all = download(tuple(symbols), "15m")
     d2_all = download(tuple(symbols), "2m")
-    ce, pe = {}, {}
+    ce, pe, refs = {}, {}, {}
 
     for sym in symbols:
         d2 = get_ohlcv(d2_all, sym)
@@ -136,27 +136,29 @@ def base_lists(symbols):
             continue
         v = float(v)
 
-        d15 = drop_incomplete(d15, 15)
-        if d15 is None or d15.empty:
+        ref_ts = d2.index[-1]                       # अभी वाली candle का समय
+        prev15 = prev_closed(d15, ref_ts, 15)       # पिछली बंद 15m candles
+        if prev15.empty:
             continue
 
-        prev15_close = float(d15["Close"].iloc[-1])   # पिछली बंद 15m candle का close
-        prev15_time = fmt_time(d15.index[-1])
+        prev15_close = float(prev15["Close"].iloc[-1])
 
         info = {
             "Price": round(price, 2),
             "VWAP": round(v, 2),
             "Prev 15m Close": round(prev15_close, 2),
-            "Prev 15m Time": fmt_time(d15.index[-1]),
+            "Prev 15m Time": fmt_time(prev15.index[-1]),
             "Price vs VWAP %": round((price - v) / v * 100, 2),
         }
 
         if price > prev15_close and price > v:
             ce[sym] = info
+            refs[sym] = ref_ts
         elif price < prev15_close and price < v:
             pe[sym] = info
+            refs[sym] = ref_ts
 
-    return ce, pe
+    return ce, pe, refs
 
 
 # ------------------------------------------------------------------
@@ -165,7 +167,7 @@ def base_lists(symbols):
 #   PE: RSI ने 60 या 40 को ऊपर से नीचे cross किया
 #   lookback = 1  ->  सिर्फ पिछली (बंद) candle
 # ------------------------------------------------------------------
-def rsi_scan(interval, minutes, candidates, side, lookback):
+def rsi_scan(interval, minutes, candidates, refs, side, lookback):
     if not candidates:
         return pd.DataFrame()
     data = download(tuple(candidates.keys()), interval)
@@ -175,8 +177,8 @@ def rsi_scan(interval, minutes, candidates, side, lookback):
         df = get_ohlcv(data, sym)
         if df is None:
             continue
-        df = drop_incomplete(df, minutes)
-        if df is None or len(df) < 20:
+        df = prev_closed(df, refs[sym], minutes)
+        if len(df) < 20:
             continue
         r = rsi(df["Close"]).dropna()
         if len(r) < lookback + 1:
@@ -240,7 +242,7 @@ with st.sidebar:
         st.rerun()
 
 with st.spinner("CE / PE Stocks list बन रही है..."):
-    ce_base, pe_base = base_lists(FNO_STOCKS)
+    ce_base, pe_base, refs = base_lists(FNO_STOCKS)
 
 tab_ce, tab_pe = st.tabs([f"🟢 CE ({len(ce_base)})", f"🔴 PE ({len(pe_base)})"])
 
@@ -250,8 +252,8 @@ with tab_ce:
     st.dataframe(base_table(ce_base), use_container_width=True, hide_index=True)
 
     with st.spinner("CE RSI scan..."):
-        ce2 = rsi_scan("2m", 2, ce_base, "CE", lookback)
-        ce5 = rsi_scan("5m", 5, ce_base, "CE", lookback)
+        ce2 = rsi_scan("2m", 2, ce_base, refs, "CE", lookback)
+        ce5 = rsi_scan("5m", 5, ce_base, refs, "CE", lookback)
 
     st.subheader(f"⏱ 2 Minute CE ({len(ce2)})")
     st.caption("CE Stocks में से — 2m RSI(14) ने 40 या 60 को ऊपर की ओर cross किया")
@@ -267,8 +269,8 @@ with tab_pe:
     st.dataframe(base_table(pe_base), use_container_width=True, hide_index=True)
 
     with st.spinner("PE RSI scan..."):
-        pe2 = rsi_scan("2m", 2, pe_base, "PE", lookback)
-        pe5 = rsi_scan("5m", 5, pe_base, "PE", lookback)
+        pe2 = rsi_scan("2m", 2, pe_base, refs, "PE", lookback)
+        pe5 = rsi_scan("5m", 5, pe_base, refs, "PE", lookback)
 
     st.subheader(f"⏱ 2 Minute PE ({len(pe2)})")
     st.caption("PE Stocks में से — 2m RSI(14) ने 60 या 40 को नीचे की ओर cross किया")
